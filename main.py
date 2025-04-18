@@ -16,7 +16,7 @@ class Tokenizer:
         self.id_to_token = {i: ch for i,ch in enumerate(self.vocab)}
     def tokenize(self,text,return_tensor=True):
         ids = [self.token_to_id[ch] for ch in text]
-        return torch.tensor(ids) if return_tensor else ids 
+        return torch.tensor(ids,device=device) if return_tensor else ids 
 
 
 
@@ -46,11 +46,11 @@ class Dataset(torch.utils.data.Dataset):
 
 all_batches = get_samples()
 train_end = int(len(all_batches)*0.7)
-train_data = Dataset(all_batches[:train_end]).to(device)
+train_data = Dataset(all_batches[:train_end])
 train = torch.utils.data.DataLoader(train_data,batch_size=64,shuffle=True)
 
 
-val_data = Dataset(all_batches[train_end:]).to(device)
+val_data = Dataset(all_batches[train_end:])
 val  = torch.utils.data.DataLoader(val_data,batch_size=64,shuffle=True)
 
 d_model=128
@@ -141,8 +141,8 @@ class TransformerBlock:
     def __init__(self,d_model=128,d_ff=512,n_heads=8):
         self.attention = MultiHeadAttention(n_heads=n_heads,d_model=d_model)
         self.ff = FeedForward(d_model=d_model,d_ff=d_ff)
-        self.attn_layer_norm = torch.nn.LayerNorm(d_model)
-        self.ff_layer_norm = torch.nn.LayerNorm(d_model)
+        self.attn_layer_norm = torch.nn.LayerNorm(d_model,device=device)
+        self.ff_layer_norm = torch.nn.LayerNorm(d_model,device=device)
     def forward(self,h):
         attn_out = self.attention(h)
         attn_out = self.attn_layer_norm(attn_out)
@@ -163,13 +163,14 @@ class TransformerBlock:
 
 class GPT:
     def __init__(self,d_model=128,d_ff=512,n_heads=8,n_blocks=10):
-        self.embedding = torch.randn(tokenizer.vocab_size, d_model)
+        self.embedding = torch.randn(tokenizer.vocab_size, d_model,device=device)
         
         self.transformer_blocks = [TransformerBlock(d_model=d_model,d_ff=d_ff,n_heads=n_heads) for _ in range(n_blocks)]
         self.proj_w = torch.randn(d_model,tokenizer.vocab_size,device=device)
         self.proj_b = torch.randn(tokenizer.vocab_size,device=device)
         self.layer_norm = torch.nn.LayerNorm(tokenizer.vocab_size,device=device)
-        self.optimizer = torch.optim.Adam(self.parameters(),lr=0.01).to(device)
+        self.optimizer = torch.optim.Adam(self.parameters(),lr=0.01)
+
         self.loss_fn = torch.nn.CrossEntropyLoss()
     def forward(self,Xs):
         one_hot_x = torch.nn.functional.one_hot(Xs.long(),num_classes=tokenizer.vocab_size).float()
@@ -193,6 +194,7 @@ class GPT:
     def train_step(self,Xs,ys):
         self.optimizer.zero_grad()
         logits = self.forward(Xs)
+        
         loss = self.loss_fn(logits.view(-1,logits.shape[-1]),ys.flatten())
         loss.backward()
         self.optimizer.step()
@@ -201,8 +203,10 @@ class GPT:
         with torch.no_grad():
             val_loss = 0 
             for step, batch in enumerate(val):
-                Xs,ys = batch
+                Xs,ys = batch 
+                Xs,ys = Xs.to(device),ys.to(device)
                 logits = self.forward(Xs)
+                
                 loss = self.loss_fn(logits.view(-1,logits.shape[-1]),ys.flatten())
                 val_loss += loss.item()
             val_loss /= 100
@@ -213,6 +217,7 @@ class GPT:
             for step,batch in enumerate(train):
                 
                 Xs,ys = batch
+                Xs,ys = Xs.to(device),ys.to(device)
                 loss = self.train_step(Xs,ys)
                 if (step + 1) % log_steps != 0:
                     print(f"Epoch {epoch + 1}, Batch {step + 1}, Loss: {loss}")
