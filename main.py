@@ -2,7 +2,10 @@ import torch
 
 with open("tiny_shakspeare.txt",'r') as f:
           text = f.read()         
-          
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 class Tokenizer:
     def __init__(self,vocab_size=26):
         self.vocab_size = 26 
@@ -43,10 +46,11 @@ class Dataset(torch.utils.data.Dataset):
 
 all_batches = get_samples()
 train_end = int(len(all_batches)*0.7)
-train_data = Dataset(all_batches[:train_end])
+train_data = Dataset(all_batches[:train_end]).to(device)
 train = torch.utils.data.DataLoader(train_data,batch_size=64,shuffle=True)
 
-val_data = Dataset(all_batches[train_end:])
+
+val_data = Dataset(all_batches[train_end:]).to(device)
 val  = torch.utils.data.DataLoader(val_data,batch_size=64,shuffle=True)
 
 d_model=128
@@ -54,9 +58,9 @@ d_model=128
 class Head:
     def __init__(self,d_model,dk):
         self.d_model = d_model
-        self.q_w = torch.randn(d_model,dk)
-        self.k_w = torch.randn(d_model,dk)
-        self.v_w = torch.randn(d_model,dk)
+        self.q_w = torch.randn(d_model,dk,device=device)
+        self.k_w = torch.randn(d_model,dk,device=device)
+        self.v_w = torch.randn(d_model,dk,device=device)
     def forward(self,embedded_x):
         q = embedded_x @ self.q_w 
         k = embedded_x @ self.k_w 
@@ -102,16 +106,16 @@ class FeedForward:
         weights = []
         biases = []
         
-        weights.append(torch.randn(d_model,d_ff))
-        biases.append(torch.randn(d_ff))
+        weights.append(torch.randn(d_model,d_ff,device=device))
+        biases.append(torch.randn(d_ff,device=device))
 
         for _ in range(self.n_layers):
-            weights.append(torch.randn(d_ff,d_ff))
-            biases.append(torch.randn(d_ff))
+            weights.append(torch.randn(d_ff,d_ff,device=device))
+            biases.append(torch.randn(d_ff,device=device))
 
 
-        self.proj_w = torch.randn(d_ff,d_model)
-        self.proj_b = torch.randn(d_model)
+        self.proj_w = torch.randn(d_ff,d_model,device=device)
+        self.proj_b = torch.randn(d_model,device=device)
 
         self.weights = weights 
         self.biases = biases
@@ -162,10 +166,10 @@ class GPT:
         self.embedding = torch.randn(tokenizer.vocab_size, d_model)
         
         self.transformer_blocks = [TransformerBlock(d_model=d_model,d_ff=d_ff,n_heads=n_heads) for _ in range(n_blocks)]
-        self.proj_w = torch.randn(d_model,tokenizer.vocab_size)
-        self.proj_b = torch.randn(tokenizer.vocab_size)
-        self.layer_norm = torch.nn.LayerNorm(tokenizer.vocab_size)
-        self.optimizer = torch.optim.Adam(self.parameters(),lr=0.001)
+        self.proj_w = torch.randn(d_model,tokenizer.vocab_size,device=device)
+        self.proj_b = torch.randn(tokenizer.vocab_size,device=device)
+        self.layer_norm = torch.nn.LayerNorm(tokenizer.vocab_size,device=device)
+        self.optimizer = torch.optim.Adam(self.parameters(),lr=0.01).to(device)
         self.loss_fn = torch.nn.CrossEntropyLoss()
     def forward(self,Xs):
         one_hot_x = torch.nn.functional.one_hot(Xs.long(),num_classes=tokenizer.vocab_size).float()
