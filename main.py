@@ -2,13 +2,13 @@ import torch
 from tokenizer import Tokenizer
 
 with open("tiny_shakspeare.txt",'r') as f:
-          text = f.read()         
+          text = f.read()      
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 encoder = Tokenizer(tokenizer_path='tokenizer.pt') 
 print("Tokenizer Loaded")
 encoded = encoder.encode(text)
-
+print("Text Encoded")
 
 CONTEXT_WINDOW  = 100 
 
@@ -213,7 +213,7 @@ class GPT:
                     self.evaluate()
                 if (step + 1) % save_steps ==0:
                     torch.save(self.state_dict(), f"gpt_epoch_{epoch + 1}_batch_{step + 1}.pt")
-                    print(f"Model saved at epoch {epoch + 1}, batch {step + 1}")
+                    print(f"Tokenizer saved at epoch {epoch + 1}, batch {step + 1}")
             self.lr_scheduler.step()
     def state_dict(self):
         state = {}

@@ -1,10 +1,13 @@
 import torch 
 from tqdm import tqdm
+
+
 class Tokenizer:
     def __init__(self,train_path=None,tokenizer_path=None):
         self.file = train_path 
         self.start = "<START>"
         self.end = "<END>"
+        self.vocab_size = None
         if train_path and tokenizer_path:
             raise ValueError("Please provide either train_path or tokenizer_path but not both.") 
         tokenizer = None
@@ -13,6 +16,7 @@ class Tokenizer:
 
             self.token_to_id = tokenizer
             self.vocab = list(self.token_to_id.keys())
+            
         else:
         
             with open(train_path,"r") as f:
@@ -22,6 +26,7 @@ class Tokenizer:
                 self.vocab.sort()
 
         self.vocab= [self.start] + self.vocab + [self.end]
+        self.vocab_size = len(self.vocab)
         if not tokenizer:
             self.token_to_id = {ch:i for i ,ch in enumerate(self.vocab)}
 
@@ -71,21 +76,18 @@ class Tokenizer:
         ids = []
         i = 0
         pbar = tqdm(total=len(text),desc="Encoding text")
-
         while i < len(text):
-            end = len(text) - 1
-            sub = None
-                
-            while sub not in self.vocab:
-                    
-                sub = text[i:end + 1]
-                end -=1 
-            ids.append(self.token_to_id[sub])
-                
-            i += len(sub) 
-            pbar.update(len(sub))
+            start = i 
+            while i< len(text) and text[start:i + 1] in self.vocab:
+                i += 1
+            token = text[start:i] 
+            ids.append(self.token_to_id[token]) 
+        
+            pbar.update(i-start)
+        print("Encoding completed")
+        return torch.tensor(ids)
 
-        return ids 
+       
     def decode(self,ids):
         return ''.join([self.id_to_token[id] for id in ids])
 
