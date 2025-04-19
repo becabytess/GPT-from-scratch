@@ -1,17 +1,13 @@
 import torch
 from tokenizer import Tokenizer
+
 with open("tiny_shakspeare.txt",'r') as f:
           text = f.read()         
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-
-
-
-tokenizer = Tokenizer(tokenizer_path='tokenizer.pt') 
+encoder = Tokenizer(tokenizer_path='tokenizer.pt') 
 print("Tokenizer Loaded")
-encoded = tokenizer.encode(text)
+encoded = encoder.encode(text)
 
 
 CONTEXT_WINDOW  = 100 
