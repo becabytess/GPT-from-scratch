@@ -1,35 +1,26 @@
 import torch
-
+from tokenizer import Tokenizer
 with open("tiny_shakspeare.txt",'r') as f:
           text = f.read()         
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class Tokenizer:
-    def __init__(self,vocab_size=26):
-        self.vocab_size = 26 
-        self.vocab = list(set(list(text)))
-        self.vocab = sorted(self.vocab)
-        self.vocab_size = len(self.vocab)
-        self.token_to_id = {ch: i for i,ch in enumerate(self.vocab)}
-        self.id_to_token = {i: ch for i,ch in enumerate(self.vocab)}
-    def tokenize(self,text,return_tensor=True):
-        ids = [self.token_to_id[ch] for ch in text]
-        return torch.tensor(ids,device=device) if return_tensor else ids 
 
 
 
+tokenizer = Tokenizer(tokenizer_path='tokenizer.pt') 
+print("Tokenizer Loaded")
+encoded = tokenizer.encode(text)
 
-tokenizer = Tokenizer()
-tokenized = tokenizer.tokenize(text)
+
 CONTEXT_WINDOW  = 100 
 
 def get_samples():
     batches = []
-    for i in range(0,len(tokenized) - CONTEXT_WINDOW,CONTEXT_WINDOW):
-        X = tokenized[i:i + CONTEXT_WINDOW]
-        y = tokenized[i + 1:i + CONTEXT_WINDOW + 1]
+    for i in range(0,len(encoded) - CONTEXT_WINDOW,CONTEXT_WINDOW):
+        X = encoded[i:i + CONTEXT_WINDOW]
+        y = encoded[i + 1:i + CONTEXT_WINDOW + 1]
         batches.append((X,y))
     batches = torch.stack([torch.stack(batch) for batch in batches])
     return batches 
@@ -163,17 +154,17 @@ class TransformerBlock:
 
 class GPT:
     def __init__(self,d_model=128,d_ff=512,n_heads=8,n_blocks=10):
-        self.embedding = torch.randn(tokenizer.vocab_size, d_model,device=device)
+        self.embedding = torch.randn(encoder.vocab_size, d_model,device=device)
         
         self.transformer_blocks = [TransformerBlock(d_model=d_model,d_ff=d_ff,n_heads=n_heads) for _ in range(n_blocks)]
-        self.proj_w = torch.randn(d_model,tokenizer.vocab_size,device=device)
-        self.proj_b = torch.randn(tokenizer.vocab_size,device=device)
-        self.layer_norm = torch.nn.LayerNorm(tokenizer.vocab_size,device=device)
-        self.optimizer = torch.optim.Adam(self.parameters(),lr=0.01)
-
+        self.proj_w = torch.randn(d_model,encoder.vocab_size,device=device)
+        self.proj_b = torch.randn(encoder.vocab_size,device=device)
+        self.layer_norm = torch.nn.LayerNorm(encoder.vocab_size,device=device)
+        self.optimizer = torch.optim.Adam(self.parameters(),lr=0.01,weight_decay=0.01)
+        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,step_size=100,gamma=0.1)
         self.loss_fn = torch.nn.CrossEntropyLoss()
     def forward(self,Xs):
-        one_hot_x = torch.nn.functional.one_hot(Xs.long(),num_classes=tokenizer.vocab_size).float()
+        one_hot_x = torch.nn.functional.one_hot(Xs.long(),num_classes=encoder.vocab_size).float()
         embedded_x = one_hot_x @ self.embedding 
         for block in self.transformer_blocks:
             embedded_x = block(embedded_x)
@@ -227,7 +218,7 @@ class GPT:
                 if (step + 1) % save_steps ==0:
                     torch.save(self.state_dict(), f"gpt_epoch_{epoch + 1}_batch_{step + 1}.pt")
                     print(f"Model saved at epoch {epoch + 1}, batch {step + 1}")
-
+            self.lr_scheduler.step()
     def state_dict(self):
         state = {}
         for i,param in enumerate(self.parameters()):
