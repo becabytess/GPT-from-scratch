@@ -179,12 +179,13 @@ class GPT:
             params += block.params()
         return params
     def train_step(self,Xs,ys):
-        self.optimizer.zero_grad()
+        
         logits = self.forward(Xs)
         
         loss = self.loss_fn(logits.view(-1,logits.shape[-1]),ys.flatten())
+        
         loss.backward()
-        self.optimizer.step()
+        
         return loss.item()
     def evaluate(self):
         with torch.no_grad():
@@ -199,21 +200,27 @@ class GPT:
             val_loss /= 100
             print(f"Validation Loss: {val_loss}")
             return val_loss
-    def train(self,epochs=100,log_steps=10,val_steps = 100,save_steps=100):
+    def train(self,epochs=100,val_steps = 100,save_steps=100,gradient_accumulation_steps=32):
+        
         for epoch in range(epochs):
+            
             for step,batch in enumerate(train):
-                
+                print(f"Epoch {epoch + 1}, Step {step + 1},")
                 Xs,ys = batch
                 Xs,ys = Xs.to(device),ys.to(device)
-                loss = self.train_step(Xs,ys)
-                if (step + 1) % log_steps != 0:
-                    print(f"Epoch {epoch + 1}, Batch {step + 1}, Loss: {loss}")
-            
+                loss = self.train_step(Xs,ys) / gradient_accumulation_steps
+                
+                if (step + 1) % gradient_accumulation_steps == 0:
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+                
+                    print(f"Epoch {epoch + 1}, Step {step + 1}, Loss: {loss*gradient_accumulation_steps}")
+
                 if (step + 1) % val_steps ==0:
                     self.evaluate()
                 if (step + 1) % save_steps ==0:
-                    torch.save(self.state_dict(), f"gpt_epoch_{epoch + 1}_batch_{step + 1}.pt")
-                    print(f"Tokenizer saved at epoch {epoch + 1}, batch {step + 1}")
+                    torch.save(self.state_dict(), f"gpt_epoch_{epoch + 1}_Step_{step + 1}.pt")
+                    print(f"Tokenizer saved at epoch {epoch + 1}, Step {step + 1}")
             self.lr_scheduler.step()
     def state_dict(self):
         state = {}
@@ -227,4 +234,4 @@ class GPT:
 
    
 model = GPT(d_model=128,d_ff=512,n_heads=8,n_blocks=10)
-model.train(epochs=1,log_steps=10,val_steps=100,save_steps=100)
+model.train(epochs=1,val_steps=100,save_steps=100,gradient_accumulation_steps=4)
