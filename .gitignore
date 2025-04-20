@@ -1,0 +1,6 @@
+checkpoints/
+gpt_latest.pt
+__pycache__/
+
+
+

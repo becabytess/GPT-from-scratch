@@ -33,7 +33,6 @@ class Tokenizer:
         self.id_to_token = {v:k for k ,v in self.token_to_id.items()} 
     def train(self,N=100,save_file_name="tokenizer"):
         words = self.text.split()
-        
         tokenized = []
         for word in words: 
             tokenized_word =[self.token_to_id[self.start]]  + [self.token_to_id[ch] for ch in word] + [self.token_to_id[self.end]]

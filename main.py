@@ -1,5 +1,6 @@
 import torch
 from tokenizer import Tokenizer
+from tqdm import tqdm 
 
 with open("tiny_shakspeare.txt",'r') as f:
           text = f.read()      
@@ -9,8 +10,7 @@ encoder = Tokenizer(tokenizer_path='tokenizer.pt')
 print("Tokenizer Loaded")
 encoded = encoder.encode(text)
 print("Text Encoded")
-
-CONTEXT_WINDOW  = 100 
+CONTEXT_WINDOW  = 200 
 
 def get_samples():
     batches = []
@@ -151,19 +151,30 @@ class TransformerBlock:
 class GPT:
     def __init__(self,d_model=128,d_ff=512,n_heads=8,n_blocks=10):
         self.embedding = torch.randn(encoder.vocab_size, d_model,device=device)
-        
+        self.d_model = d_model
         self.transformer_blocks = [TransformerBlock(d_model=d_model,d_ff=d_ff,n_heads=n_heads) for _ in range(n_blocks)]
         self.proj_w = torch.randn(d_model,encoder.vocab_size,device=device)
         self.proj_b = torch.randn(encoder.vocab_size,device=device)
         self.layer_norm = torch.nn.LayerNorm(encoder.vocab_size,device=device)
-        self.optimizer = torch.optim.Adam(self.parameters(),lr=0.01,weight_decay=0.01)
-        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,step_size=100,gamma=0.1)
+        self.optimizer = torch.optim.Adam(self.parameters(),lr=0.1,weight_decay=0.1)
+        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,step_size=300,gamma=0.1)
+        
         self.loss_fn = torch.nn.CrossEntropyLoss()
     def forward(self,Xs):
         one_hot_x = torch.nn.functional.one_hot(Xs.long(),num_classes=encoder.vocab_size).float()
         embedded_x = one_hot_x @ self.embedding 
-        for block in self.transformer_blocks:
-            embedded_x = block(embedded_x)
+        highest_w = torch.tensor(10000)
+        #sinosudal positional encoding 
+        for pos in range(embedded_x.shape[1]):
+
+            enc = []
+            for i in range(self.d_model):
+                if i % 2==0:
+                    enc.append(torch.sin(pos/(highest_w**(2*i/self.d_model))))
+                else:
+                    enc.append(torch.cos(pos/(highest_w**(2*i/self.d_model))))
+            embedded_x[:,pos] += torch.tensor(enc)
+
         logits = embedded_x @ self.proj_w + self.proj_b 
         logits = self.layer_norm(logits)
         return logits 
@@ -188,6 +199,7 @@ class GPT:
         
         return loss.item()
     def evaluate(self):
+        print("Evaluating...")
         with torch.no_grad():
             val_loss = 0 
             for step, batch in enumerate(val):
@@ -197,31 +209,51 @@ class GPT:
                 
                 loss = self.loss_fn(logits.view(-1,logits.shape[-1]),ys.flatten())
                 val_loss += loss.item()
-            val_loss /= 100
+            val_loss /= len(val)
             print(f"Validation Loss: {val_loss}")
             return val_loss
-    def train(self,epochs=100,val_steps = 100,save_steps=100,gradient_accumulation_steps=32):
-        
+    def train(self,epochs=100,val_steps = 50,save_steps=50,gradient_accumulation_steps=32):
+        steps = 0
         for epoch in range(epochs):
             
+            pbar = tqdm(total=gradient_accumulation_steps)            
+
             for step,batch in enumerate(train):
-                print(f"Epoch {epoch + 1}, Step {step + 1},")
+                steps += 1
                 Xs,ys = batch
                 Xs,ys = Xs.to(device),ys.to(device)
                 loss = self.train_step(Xs,ys) / gradient_accumulation_steps
-                
-                if (step + 1) % gradient_accumulation_steps == 0:
+                pbar.update(1) 
+                if (steps + 1) % gradient_accumulation_steps == 0 :
                     self.optimizer.step()
                     self.optimizer.zero_grad()
-                
+                    pbar = tqdm(total=gradient_accumulation_steps)
+                    print('----------------------------------------------------------------------------------------')
                     print(f"Epoch {epoch + 1}, Step {step + 1}, Loss: {loss*gradient_accumulation_steps}")
+                    print('----------------------------------------------------------------------------------------')
+                    print(''' 
 
-                if (step + 1) % val_steps ==0:
+
+''')
+                    
+
+                if (steps + 1) % val_steps ==0:
                     self.evaluate()
-                if (step + 1) % save_steps ==0:
-                    torch.save(self.state_dict(), f"gpt_epoch_{epoch + 1}_Step_{step + 1}.pt")
-                    print(f"Tokenizer saved at epoch {epoch + 1}, Step {step + 1}")
+                if (steps + 1) % save_steps ==0:
+                    torch.save(self.state_dict(), f"checkpoints/gpt_epoch_{epoch + 1}_Step_{step + 1}.pt")
+                    print(f"Model saved at epoch {epoch + 1}, Step {steps + 1}")
+                
+            self.optimizer.step()
+            self.optimizer.zero_grad()
             self.lr_scheduler.step()
+            print(f"Epoch {epoch + 1} completed with  loss: {(steps % gradient_accumulation_steps)*loss}")
+            self.evaluate()
+            
+            torch.save(self.state_dict(),f"gpt_latest.pt")
+            print('Model state for Epoch {} saved'.format(epoch + 1))
+            
+            print('----------------------------------------------------------------------------------------')
+
     def state_dict(self):
         state = {}
         for i,param in enumerate(self.parameters()):
@@ -234,4 +266,4 @@ class GPT:
 
    
 model = GPT(d_model=128,d_ff=512,n_heads=8,n_blocks=10)
-model.train(epochs=1,val_steps=100,save_steps=100,gradient_accumulation_steps=4)
+model.train(epochs=100,val_steps=100,save_steps=50,gradient_accumulation_steps=32)
