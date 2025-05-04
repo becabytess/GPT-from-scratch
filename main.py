@@ -10,6 +10,7 @@ encoder = Tokenizer(tokenizer_path='tokenizer.pt')
 print("Tokenizer Loaded")
 encoded = encoder.encode(text)
 print("Text Encoded")
+
 CONTEXT_WINDOW  = 200 
 
 def get_samples():
@@ -267,3 +268,6 @@ class GPT:
    
 model = GPT(d_model=128,d_ff=512,n_heads=8,n_blocks=10)
 model.train(epochs=100,val_steps=100,save_steps=50,gradient_accumulation_steps=32)
+
+
+

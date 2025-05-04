@@ -1,8 +1,8 @@
-# Reinventing ChatGPT: A Foundational Language Model Implementation
+# Reinventing GPT2 From Scratch : A Foundational Language Model Implementation
 
 ## Overview
 
-This project presents a foundational implementation of a Generative Pre-trained Transformer (GPT) model. It focuses on constructing the core components of modern large language models from fundamental principles, including tokenization, the transformer architecture, and the training process.
+This project presents a foundational implementation of a Generative Pre-trained Transformer (GPT) model. It focuses on constructing the core components of modern large language models from fundamental principles without relying on higher level apis , including tokenization, the transformer architecture, and the training process, everything built from the ground up with basic matrix operations.
 
 ## Core Components
 
