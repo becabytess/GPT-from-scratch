@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 enc = tiktoken.get_encoding('cl100k_base')
-torch.set_default_device("cuda")
+# torch.set_default_device("cuda")
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 data_source = os.path.join('datasets','tiny_shakspeare.txt')
@@ -65,7 +65,7 @@ class TextDataset(torch.utils.data.Dataset):
 
 batch_size = 50 
 lr  = 1e-3
-seq_len = 200
+seq_len =1000
 
 train_dataset = TextDataset(train_data_path,seq_len)
 test_dataset = TextDataset(test_data_path,seq_len)
@@ -84,13 +84,15 @@ class Attention(nn.Module):
     def __init__(self,head_size, embed_size,seq_len):
         super().__init__()
         self.head_size = head_size
-        self.query = nn.Linear(embed_size,head_size)
+        self.query = nn.Linear(embed_size,head_size) 
         self.key = nn.Linear(embed_size,head_size)
         self.value = nn.Linear(embed_size,head_size)
         self.embed_size = embed_size
+        self.head_size = head_size 
+
         
         
-        #
+        
         
         
     def forward(self,embds):
@@ -98,7 +100,7 @@ class Attention(nn.Module):
         key = self.key(embds)
         value = self.value(embds)
         scores = query @ key.transpose(-2,-1) / self.head_size ** 0.5
-        # print(embds.shape)
+        
         mask = torch.tril(torch.ones(embds.shape[1],embds.shape[1]))
         
         
@@ -136,8 +138,10 @@ class Block(nn.Module):
             nn.Linear(self.embed_size, 4*self.embed_size),
             nn.GELU(),
             nn.Linear(self.embed_size*4,self.embed_size),
-            nn.Dropout(0.2),
-            ) 
+            nn.Dropout(0.2)
+            
+            )
+
         
 
         self.ln1 = nn.LayerNorm(self.embed_size)
@@ -173,7 +177,7 @@ class Transformer(nn.Module):
         self.positional_encoding = nn.Embedding(seq_len,embed_size)
         self.proj = nn.Linear(embed_size,vocab_size)
         
-
+    
     def forward(self,ids):
         
         embedding = self.embedding(ids)
@@ -217,7 +221,8 @@ class Transformer(nn.Module):
 
         
 
-
+    def get_params_count(self):
+        return sum(p.numel() for p in self.parameters())
 
     def test(self):
         total_loss= 0
@@ -283,18 +288,20 @@ class Transformer(nn.Module):
 
 
 
-model  = Transformer(128,4,4,enc.n_vocab,seq_len)
+model  = Transformer(128,10,30,enc.n_vocab,seq_len)
 
 # model.fit()
 # torch.save(model.state_dict(),'final.pt')
 
+print(model.get_params_count())
 
 
-inputs = ['hello world is the first']
-encoded_text = enc.encode_batch(inputs)
-encoded_text = torch.tensor(encoded_text)
-# print(encoded_text)
-model.generate(encoded_text,100)
+
+# inputs = ['hello world is the first']
+# encoded_text = enc.encode_batch(inputs)
+# encoded_text = torch.tensor(encoded_text)
+# # print(encoded_text)
+# model.generate(encoded_text,100)
 
 
 
