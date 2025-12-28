@@ -66,7 +66,10 @@ class TextDataset(torch.utils.data.Dataset):
 batch_size = 50 
 lr  = 1e-3
 seq_len =1000
-
+gradient_accumulation_steps = 40
+checkpoint_interval = 1000
+lr_scheduler_step_size = 10 
+lr_scheduler_gamma = 0.9
 train_dataset = TextDataset(train_data_path,seq_len)
 test_dataset = TextDataset(test_data_path,seq_len)
 
@@ -176,7 +179,8 @@ class Transformer(nn.Module):
         self.positional_encoding = nn.Embedding(seq_len,embed_size)
         self.proj = nn.Linear(embed_size,vocab_size)
         self.apply(self._init_weights)
-        
+        self.optimizer = torch.optim.AdamW(params=self.parameters(),lr=1e-2,weight_decay=1e-2)
+        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,step_size=lr_scheduler_step_size,gamma=lr_scheduler_gamma)
         
     def forward(self,ids):
         
@@ -266,8 +270,7 @@ class Transformer(nn.Module):
         
 
         
-        optimizer = torch.optim.AdamW(self.parameters(),lr=1e-2,weight_decay=1e-2)
-        
+
         for epoch in range(epochs): 
             total_loss = 0 
             num_batches = 0 
@@ -280,9 +283,13 @@ class Transformer(nn.Module):
                 
                 loss = F.cross_entropy(logits,y)
                 total_loss += loss.item()
-                optimizer.zero_grad()
                 loss.backward()
-                optimizer.step()
+
+                if num_batches % gradient_accumulation_steps ==0: 
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+                    self.lr_scheduler.step() 
+                
                 if num_batches % 20 == 0 :
                     print(f"step {num_batches}/{len(train_loader)} , train loss: {loss}")
 
@@ -292,10 +299,12 @@ class Transformer(nn.Module):
                     
                     print(f"step {num_batches}/{len(train_loader)} , train loss: {loss}    , Test loss: {test_loss}")
 
-                    
+                if num_batches %  checkpoint_interval == 0 :
+                    torch.save(self.state_dict(),os.path.join('checkpoints',f'checkpoint_{num_batches}.pt'))
+                    print(f"Checkpoint saved at step {num_batches}")
 
 
-           
+                
 
         
 
@@ -308,9 +317,8 @@ model  = Transformer(120,10,30,enc.n_vocab,seq_len)
 # model.fit()
 # torch.save(model.state_dict(),'final.pt')
 
-params_count = model.get_params_count()
-# print(f"Number of parameters: {'_'.join(str(params_count).split(''))}")
-
+n_params = model.get_params_count()
+print(f"Number of parameters: {n_params}")
 
 
 
