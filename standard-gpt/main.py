@@ -29,7 +29,7 @@ if not Path(train_data_path).is_file():
         encoded_dataset = enc.encode(dataset)
         train_end = int(train_ratio*len(encoded_dataset))
         train_data = encoded_dataset[:train_end]
-        val_data = encoded_dataset[train_end:]
+        val_data = encoded_dataset[train_end:] 
         np.array(train_data,dtype=np.uint32).tofile(train_data_path)
         np.array(val_data,dtype=np.uint32).tofile(test_data_path)
 
@@ -68,8 +68,18 @@ lr  = 1e-3
 seq_len =1000
 gradient_accumulation_steps = 40
 checkpoint_interval = 1000
-lr_scheduler_step_size = 10 
-lr_scheduler_gamma = 0.9
+# lr_scheduler_step_size = 10 
+# lr_scheduler_gamma = 0.9
+
+#attempt to implement warmup 
+warmup_steps = 2000 
+max_lr = 1e-1
+min_lr = 1e-4
+
+
+
+
+
 train_dataset = TextDataset(train_data_path,seq_len)
 test_dataset = TextDataset(test_data_path,seq_len)
 
@@ -180,7 +190,10 @@ class Transformer(nn.Module):
         self.proj = nn.Linear(embed_size,vocab_size)
         self.apply(self._init_weights)
         self.optimizer = torch.optim.AdamW(params=self.parameters(),lr=1e-2,weight_decay=1e-2)
-        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,step_size=lr_scheduler_step_size,gamma=lr_scheduler_gamma)
+        
+        # self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,step_size=lr_scheduler_step_size,gamma=lr_scheduler_gamma)
+
+
         
     def forward(self,ids):
         
@@ -269,13 +282,14 @@ class Transformer(nn.Module):
     def fit(self,epochs=40):
         
 
-        
-
+        total_steps = epochs * len(train_loader)
+        # total_decay_steps = total_steps
+        steps = 0 
         for epoch in range(epochs): 
             total_loss = 0 
             num_batches = 0 
             for x,y in train_loader:
-
+                steps += 1
                 num_batches += 1
                 logits = self.forward(x)
                 y = y.flatten()
@@ -288,7 +302,17 @@ class Transformer(nn.Module):
                 if num_batches % gradient_accumulation_steps ==0: 
                     self.optimizer.step()
                     self.optimizer.zero_grad()
-                    self.lr_scheduler.step() 
+                    # self.lr_scheduler.step() 
+                    if steps  < warmup_steps:
+                        self.optimizer.param_groups[0]['lr'] = max_lr * (steps / warmup_steps)
+                    elif self.optimizer.param_groups[0]['lr'] < min_lr: 
+                        self.optimizer.param_groups[0]['lr']  = min_lr 
+                    else:
+                        #apply linear lr  decay 
+                        self.optimizer.param_groups[0]['lr'] = max_lr - (max_lr - min_lr) * (steps / total_decay_steps)
+                        
+
+
                 
                 if num_batches % 20 == 0 :
                     print(f"step {num_batches}/{len(train_loader)} , train loss: {loss}")
