@@ -138,14 +138,12 @@ class Block(nn.Module):
             nn.Linear(self.embed_size, 4*self.embed_size),
             nn.GELU(),
             nn.Linear(self.embed_size*4,self.embed_size),
-            nn.Dropout(0.2)
-            
-            )
+            nn.Dropout(0.2))
 
         
 
         self.ln1 = nn.LayerNorm(self.embed_size)
-        self.ln2 = nn.LayerNorm(self.embed_size)
+        self.ln2 = nn.LayerNorm(self.embed_size)  
     def forward(self,x):    
         x = x + self.multi_head_attention(self.ln1(x))
         x = x + self.ff(self.ln2(x))
@@ -160,6 +158,7 @@ class Block(nn.Module):
 class Transformer(nn.Module):
     def __init__(self,embed_size,n_head,n_block,vocab_size,seq_len):
         super().__init__()
+        assert embed_size % n_head ==0 , "Embed size must be divisible by n_head"
         self.embed_size = embed_size 
         self.n_head = n_head 
         self.n_block = n_block
@@ -176,8 +175,9 @@ class Transformer(nn.Module):
         #learnt positional encoding like gpt2 and gpt 3
         self.positional_encoding = nn.Embedding(seq_len,embed_size)
         self.proj = nn.Linear(embed_size,vocab_size)
+        self.apply(self._init_weights)
         
-    
+        
     def forward(self,ids):
         
         embedding = self.embedding(ids)
@@ -246,6 +246,21 @@ class Transformer(nn.Module):
         return loss
         
 
+    def _init_weights(self,module):
+        if isinstance(module,nn.Linear):
+                nn.init.normal_(module.weight,mean=0.0,std=0.02)
+                if module.bias is not None: 
+                    nn.init.zeros_(module.bias)
+        elif isinstance(module,nn.Embedding):
+                nn.init.normal_(module.weight,mean=0.0,std=0.02)
+        elif isinstance(module,nn.LayerNorm):
+                nn.init.zeros_(module.bias) 
+                nn.init.zeros_(module.weight)
+    
+            
+
+
+
 
     def fit(self,epochs=40):
         
@@ -288,20 +303,22 @@ class Transformer(nn.Module):
 
 
 
-model  = Transformer(128,10,30,enc.n_vocab,seq_len)
+model  = Transformer(120,10,30,enc.n_vocab,seq_len)
 
 # model.fit()
 # torch.save(model.state_dict(),'final.pt')
 
-print(model.get_params_count())
+params_count = model.get_params_count()
+# print(f"Number of parameters: {'_'.join(str(params_count).split(''))}")
 
 
 
-# inputs = ['hello world is the first']
-# encoded_text = enc.encode_batch(inputs)
-# encoded_text = torch.tensor(encoded_text)
-# # print(encoded_text)
-# model.generate(encoded_text,100)
+
+inputs = ['hello world is the first']
+encoded_text = enc.encode_batch(inputs)
+encoded_text = torch.tensor(encoded_text)
+# print(encoded_text)
+model.generate(encoded_text,100)
 
 
 
