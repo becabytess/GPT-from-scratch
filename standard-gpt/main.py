@@ -283,7 +283,7 @@ class Transformer(nn.Module):
         
 
         total_steps = epochs * len(train_loader)
-        # total_decay_steps = total_steps
+        total_decay_steps = total_steps
         steps = 0 
         for epoch in range(epochs): 
             total_loss = 0 
@@ -342,7 +342,7 @@ model  = Transformer(120,10,30,enc.n_vocab,seq_len)
 # torch.save(model.state_dict(),'final.pt')
 
 n_params = model.get_params_count()
-print(f"Number of parameters: {n_params}")
+print(f"Number of parameters: {n_params:,}")
 
 
 
