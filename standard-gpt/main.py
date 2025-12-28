@@ -63,11 +63,14 @@ class TextDataset(torch.utils.data.Dataset):
 
 #training params 
 
-batch_size = 50 
+batch_size = 256 
 lr  = 1e-3
-seq_len =1000
+seq_len =3000
 gradient_accumulation_steps = 40
 checkpoint_interval = 1000
+d_model = 768
+n_head = 8
+n_block = 12
 # lr_scheduler_step_size = 10 
 # lr_scheduler_gamma = 0.9
 
@@ -112,6 +115,12 @@ class Attention(nn.Module):
         query = self.query(embds)
         key = self.key(embds)
         value = self.value(embds)
+
+        """commented out because we need to make sure we use flash attention 
+        to make things faster 
+        
+
+
         scores = query @ key.transpose(-2,-1) / self.head_size ** 0.5
         
         mask = torch.tril(torch.ones(embds.shape[1],embds.shape[1]))
@@ -120,6 +129,14 @@ class Attention(nn.Module):
         scores = scores.masked_fill(mask==0,float('-inf'))
         attention_weights = torch.softmax(scores,dim=-1)
         attention = attention_weights @ value 
+
+        """
+
+        attention = F.scaled_dot_product_attention(query,key,value,is_causal=True)
+        #this version uses flash attention which internally uses  the SRAM of GPUs to do the operations
+
+
+
         return attention 
 
         
@@ -199,7 +216,7 @@ class Transformer(nn.Module):
         
         embedding = self.embedding(ids)
         positional_encoding = self.positional_encoding(torch.arange(ids.shape[-1]))
-        embedding = embedding + positional_encoding
+        embedding = embedding + positional_encoding     
         outs = self.model(embedding)
         logits =self.proj(outs)
         return logits
@@ -217,9 +234,10 @@ class Transformer(nn.Module):
             initial_tokens = j
             print(text_tensor.shape)
             while tokens < max_tokens: 
-
-                logits = self.forward(text_tensor[:,i:j])
+                with torch.autocast(device_type='cuda',dtype=torch.bfloat16):
+                    logits = self.forward(text_tensor[:,i:j])
                 probs = F.softmax(logits)
+
                 last_token = probs[:,-1,:]
                 best = [torch.multinomial(last_token,num_samples=1)]
                 print(enc.decode(best),end='')
@@ -269,7 +287,7 @@ class Transformer(nn.Module):
                 if module.bias is not None: 
                     nn.init.zeros_(module.bias)
         elif isinstance(module,nn.Embedding):
-                nn.init.normal_(module.weight,mean=0.0,std=0.02)
+                nn.init.normal_(module.weight,mean=0.0,std=0.02) 
         elif isinstance(module,nn.LayerNorm):
                 nn.init.zeros_(module.bias) 
                 nn.init.zeros_(module.weight)
@@ -291,11 +309,14 @@ class Transformer(nn.Module):
             for x,y in train_loader:
                 steps += 1
                 num_batches += 1
-                logits = self.forward(x)
-                y = y.flatten()
-                logits = logits.view(-1,logits.shape[-1])
+
+                with torch.autocast(device_type='cuda',dtype=torch.bfloat16) :
+
+                    logits = self.forward(x)
+                    y = y.flatten()
+                    logits = logits.view(-1,logits.shape[-1])
                 
-                loss = F.cross_entropy(logits,y)
+                    loss = F.cross_entropy(logits,y)
                 total_loss += loss.item()
                 loss.backward()
 
@@ -324,7 +345,16 @@ class Transformer(nn.Module):
                     print(f"step {num_batches}/{len(train_loader)} , train loss: {loss}    , Test loss: {test_loss}")
 
                 if num_batches %  checkpoint_interval == 0 :
-                    torch.save(self.state_dict(),os.path.join('checkpoints',f'checkpoint_{num_batches}.pt'))
+                    state = {
+                        'model_state_dict':model_state_dict(),
+                        'optimizer_state_dict':optimizer.state_dict(),
+                        'steps':steps,
+                        'num_batches_processed':num_batches,
+                        'total_loss':total_loss,
+                        
+
+                    }
+                    torch.save(state,os.path.join('checkpoints',f'checkpoint_{num_batches}.pt'))
                     print(f"Checkpoint saved at step {num_batches}")
 
 
@@ -336,15 +366,13 @@ class Transformer(nn.Module):
 
 
 
-model  = Transformer(120,10,30,enc.n_vocab,seq_len)
-
+model  = Transformer(d_model,n_head,n_block,enc.n_vocab,seq_len)
+torch.compile(model)
 # model.fit()
 # torch.save(model.state_dict(),'final.pt')
 
 n_params = model.get_params_count()
 print(f"Number of parameters: {n_params:,}")
-
-
 
 inputs = ['hello world is the first']
 encoded_text = enc.encode_batch(inputs)
